@@ -121,7 +121,7 @@ class PhotoboothApp:
             pygame.Rect(
                 width - 150,
                 30,
-                140,
+                100,
                 50,
             ),
             "SAIR",
