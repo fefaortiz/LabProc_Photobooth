@@ -117,6 +117,19 @@ class PhotoboothApp:
             config.PRIMARY_BUTTON_TEXT_COLOR,
         )
 
+        self.exit_button = Button(
+            pygame.Rect(
+                width - 120,
+                30,
+                60,
+                50,
+            ),
+            "SAIR",
+            config.SECONDARY_BUTTON_COLOR,
+            config.SECONDARY_BUTTON_TEXT_COLOR,
+            border_radius=12,
+        )
+
         bottom_button_width = min(330, (width - 120) // 2)
         bottom_button_height = 82
         gap = 30
@@ -370,7 +383,9 @@ class PhotoboothApp:
 
     def _handle_pointer(self, position: tuple[int, int]) -> None:
         if self.state == AppState.IDLE:
-            if self.start_button.contains(position):
+            if self.exit_button.contains(position):
+                self.running = False
+            elif self.start_button.contains(position):
                 self._go_to_preview()
 
         elif self.state == AppState.PREVIEW:
@@ -429,7 +444,7 @@ class PhotoboothApp:
 
         draw_centered_text(
             self.screen,
-            "PHOTO BOOTH",
+            "<PHOTOBOOTH>",
             self.font_title,
             config.TEXT_COLOR,
             190,
@@ -446,6 +461,12 @@ class PhotoboothApp:
         self.start_button.draw(
             self.screen,
             self.font_button,
+            pointer,
+        )
+
+        self.exit_button.draw(
+            self.screen,
+            self.font_small,
             pointer,
         )
 
