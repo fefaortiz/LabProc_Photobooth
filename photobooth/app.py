@@ -119,9 +119,9 @@ class PhotoboothApp:
 
         self.exit_button = Button(
             pygame.Rect(
-                width - 120,
+                width - 150,
                 30,
-                60,
+                140,
                 50,
             ),
             "SAIR",
