@@ -1,98 +1,146 @@
 from __future__ import annotations
 
-import logging
+from dataclasses import dataclass
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from typing import Optional
 
 from PIL import Image, ImageOps
 from escpos.printer import Usb
 
-import config
 
-
-logger = logging.getLogger(__name__)
+@dataclass(frozen=True)
+class PrintResult:
+    success: bool
+    message: str
 
 
 class PrinterService:
-    def __init__(self) -> None:
-        self.enabled = config.PRINTER_ENABLED
+    """
+    Serviço responsável por preparar e imprimir as fotografias.
+
+    Modos disponíveis:
+
+    disabled:
+        Apenas confirma que a fotografia foi salva.
+
+    usb:
+        Imprime diretamente em uma impressora ESC/POS conectada
+        por USB usando python-escpos.
+    """
+
+    def __init__(
+        self,
+        mode: str = "disabled",
+        vendor_id: Optional[int] = None,
+        product_id: Optional[int] = None,
+        in_endpoint: Optional[int] = None,
+        out_endpoint: Optional[int] = None,
+        image_width: int = 384,
+        feed_lines: int = 3,
+        cut_after_print: bool = True,
+    ) -> None:
+        normalized_mode = mode.strip().lower()
+
+        if normalized_mode not in {"disabled", "usb"}:
+            raise ValueError(
+                'Modo de impressão inválido. Use "disabled" ou "usb".'
+            )
+
+        if image_width <= 0:
+            raise ValueError(
+                "A largura da imagem da impressora deve ser maior que zero."
+            )
+
+        if feed_lines < 0:
+            raise ValueError(
+                "A quantidade de linhas de avanço não pode ser negativa."
+            )
+
+        if normalized_mode == "usb":
+            if vendor_id is None:
+                raise ValueError("PRINTER_VENDOR_ID não foi configurado.")
+
+            if product_id is None:
+                raise ValueError("PRINTER_PRODUCT_ID não foi configurado.")
+
+        self.mode = normalized_mode
+        self.vendor_id = vendor_id
+        self.product_id = product_id
+        self.in_endpoint = in_endpoint
+        self.out_endpoint = out_endpoint
+        self.image_width = image_width
+        self.feed_lines = feed_lines
+        self.cut_after_print = cut_after_print
+
+    @property
+    def enabled(self) -> bool:
+        return self.mode == "usb"
 
     def _create_printer(self) -> Usb:
-        """
-        Cria uma nova conexão USB com a impressora.
+        printer_arguments = {
+            "idVendor": self.vendor_id,
+            "idProduct": self.product_id,
+        }
 
-        Criamos a conexão somente no momento da impressão para reduzir
-        problemas de conexão USB mantida aberta por muito tempo.
-        """
-        return Usb(
-            config.PRINTER_VENDOR_ID,
-            config.PRINTER_PRODUCT_ID,
-            in_ep=config.PRINTER_IN_ENDPOINT,
-            out_ep=config.PRINTER_OUT_ENDPOINT,
-        )
+        if self.in_endpoint is not None:
+            printer_arguments["in_ep"] = self.in_endpoint
 
-    def _prepare_image(self, image_path: Path) -> Path:
+        if self.out_endpoint is not None:
+            printer_arguments["out_ep"] = self.out_endpoint
+
+        return Usb(**printer_arguments)
+
+    def _prepare_image(self, photo_path: Path) -> Image.Image:
         """
-        Prepara a foto para impressão térmica:
-        - corrige orientação EXIF;
-        - converte para escala de cinza;
-        - redimensiona para a largura da impressora;
-        - mantém a proporção original;
-        - aumenta levemente o contraste;
-        - salva uma imagem temporária.
+        Carrega e prepara a fotografia para a largura da impressora.
+
+        A imagem:
+        - tem sua orientação EXIF corrigida;
+        - é convertida para escala de cinza;
+        - é redimensionada sem deformação;
+        - recebe ajuste automático de contraste.
         """
-        with Image.open(image_path) as source_image:
-            image = ImageOps.exif_transpose(source_image)
+        with Image.open(photo_path) as source:
+            image = ImageOps.exif_transpose(source)
             image = image.convert("L")
 
-            target_width = config.PRINTER_IMAGE_WIDTH
-
-            if image.width != target_width:
-                scale = target_width / image.width
-                target_height = max(1, round(image.height * scale))
+            if image.width != self.image_width:
+                scale = self.image_width / image.width
+                target_height = max(
+                    1,
+                    round(image.height * scale),
+                )
 
                 image = image.resize(
-                    (target_width, target_height),
+                    (self.image_width, target_height),
                     Image.Resampling.LANCZOS,
                 )
 
             image = ImageOps.autocontrast(image)
 
-            temporary_file = NamedTemporaryFile(
-                suffix=".png",
-                delete=False,
-            )
-            temporary_path = Path(temporary_file.name)
-            temporary_file.close()
+            # Retorna uma cópia independente porque o arquivo será fechado
+            # ao sair do bloco with.
+            return image.copy()
 
-            image.save(temporary_path, format="PNG")
-
-        return temporary_path
-
-    def print_photo(self, image_path: str | Path) -> bool:
-        """
-        Imprime uma fotografia salva.
-
-        Retorna True quando o comando de impressão é enviado com sucesso.
-        Lança uma exceção quando ocorre erro, permitindo que a interface
-        exiba uma mensagem e ofereça uma nova tentativa.
-        """
-        if not self.enabled:
-            logger.info("Impressão desabilitada no config.py.")
-            return True
-
-        photo_path = Path(image_path)
+    def process_photo(self, photo_path: Path) -> PrintResult:
+        photo_path = Path(photo_path)
 
         if not photo_path.exists():
-            raise FileNotFoundError(
-                f"A fotografia não foi encontrada: {photo_path}"
+            return PrintResult(
+                False,
+                f"Arquivo não encontrado: {photo_path}",
             )
 
-        temporary_path: Path | None = None
-        printer: Usb | None = None
+        if self.mode == "disabled":
+            return PrintResult(
+                True,
+                f"Foto salva em {photo_path.name}. Impressão desativada.",
+            )
+
+        printer: Optional[Usb] = None
 
         try:
-            temporary_path = self._prepare_image(photo_path)
+            image = self._prepare_image(photo_path)
             printer = self._create_printer()
 
             printer.set(
@@ -102,39 +150,28 @@ class PrinterService:
                 height=1,
             )
 
-            printer.image(str(temporary_path))
+            printer.image(image)
 
-            # Avança um pouco o papel antes do corte.
-            printer.text("\n\n\n")
+            if self.feed_lines > 0:
+                printer.text("\n" * self.feed_lines)
 
-            if config.PRINTER_CUT_AFTER_PRINT:
+            if self.cut_after_print:
                 printer.cut()
 
-            logger.info("Foto enviada para impressão: %s", photo_path)
-            return True
-
-        except Exception:
-            logger.exception(
-                "Falha ao imprimir a fotografia: %s",
-                photo_path,
+            return PrintResult(
+                True,
+                "Foto impressa com sucesso.",
             )
-            raise
+
+        except Exception as error:
+            return PrintResult(
+                False,
+                f"Não foi possível imprimir a foto: {error}",
+            )
 
         finally:
             if printer is not None:
                 try:
                     printer.close()
                 except Exception:
-                    logger.debug(
-                        "Não foi possível fechar a conexão da impressora.",
-                        exc_info=True,
-                    )
-
-            if temporary_path is not None:
-                try:
-                    temporary_path.unlink(missing_ok=True)
-                except OSError:
-                    logger.debug(
-                        "Não foi possível apagar a imagem temporária.",
-                        exc_info=True,
-                    )
+                    pass
