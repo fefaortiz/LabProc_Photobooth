@@ -1,217 +1,65 @@
-# Photo Booth — Raspberry Pi 3B + Microsoft LifeCam VX-7000
+# Photo Booth - Segunda Release
 
-Versão baseada no fluxo do código original, mas adaptada para:
+## Disciplina: **PCS3732**
 
-- webcam USB via OpenCV e V4L2;
-- Microsoft LifeCam VX-7000;
-- Raspberry Pi 3B;
-- interface em Pygame;
-- botão de captura na própria tela;
-- ausência de botões GPIO;
-- impressão desativada até a chegada da impressora.
+**Grupo J:**
 
-## Fluxo
+- Arthur Soares Galimberti — NUSP 14559799
+- Fernanda Emilio Ortiz — NUSP 14570225
+- João Gallego Goulart Viana — NUSP 14581606
 
-1. Tela inicial.
-2. Botão **TIRAR FOTO**.
-3. Preview ao vivo.
-4. Botão **FOTO**.
-5. Contagem regressiva 3, 2, 1 sem congelar o preview.
-6. Captura e gravação em `photos/`.
-7. Tela de revisão.
-8. **REPETIR** ou **FINALIZAR**.
-9. Retorno automático à tela inicial.
+**Professor:** Victor Takashi Hayashi
 
-## Estrutura
+**Data:** 04/08/2026
 
-```text
-photobooth_lifecam/
-├── main.py
-├── app.py
-├── config.py
-├── camera_service.py
-├── printer_service.py
-├── ui.py
-├── camera_test.py
-├── install.sh
-├── images/
-│   ├── attract.jpg   # opcional
-│   ├── printing.jpg  # opcional
-│   └── done.jpg      # opcional
-└── photos/
-```
+## Motivação
 
-## Instalação
+O projeto tem como objetivo desenvolver um sistema de cabine fotográfica (Photo Booth) de baixo custo utilizando um Raspberry Pi 3B e uma webcam USB Microsoft LifeCam VX-7000. A solução substitui uma arquitetura originalmente baseada em câmera oficial do Raspberry Pi, botões físicos GPIO e impressão automática por uma implementação mais simples, portátil e de fácil manutenção.
 
-No terminal, entre na pasta do projeto e execute:
+A motivação da adaptação é permitir que o sistema funcione utilizando hardware amplamente disponível, reduzindo custos e facilitando futuras expansões. Além disso, toda a interação com o usuário ocorre por meio de uma interface gráfica desenvolvida em Pygame, dispensando componentes eletrônicos adicionais. O sistema foi projetado para salvar as imagens localmente e também imprimir as fotografias.
 
-```bash
-chmod +x install.sh
-./install.sh
-```
+## Especificação de Requisitos
 
-Ou instale manualmente:
+### Requisitos funcionais
+- Exibir uma tela inicial com opção de iniciar a captura.
+- Mostrar o preview da câmera em tempo real.
+- Permitir a captura da fotografia através de um botão na interface.
+- Exibir uma contagem regressiva de 3 segundos antes da captura.
+- Manter o preview da câmera ativo durante a contagem regressiva.
+- Capturar a imagem da câmera após a contagem.
+- Armazenar automaticamente a fotografia.
+- Exibir uma tela de revisão da fotografia capturada.
+- Permitir ao usuário repetir a fotografia ou imprimir a atual.
+- Retornar automaticamente à tela inicial após a impressão.
 
-```bash
-sudo apt update
-sudo apt install python3-opencv python3-pygame v4l-utils fswebcam
-```
+### Requisitos não funcionais
+- Interface gráfica responsiva e intuitiva ao usuário
+- Manter taxa de atualização suficiente para fornecer preview contínuo ao usuário.
+- Impressão da foto deve ocorrer rapidamente.
+- A foto impressa deve ser de qualidade suficiente para distinguir os elementos presentes na imagem do preview.
 
-## Conferir a câmera
+## Arquitetura Proposta
 
-```bash
-v4l2-ctl -d /dev/video0 --list-formats-ext
-```
+![Arquitetura do sistema](arquitetura.png)
 
-A LifeCam testada apresentou MJPG em 640x480 a 30 fps, configuração já usada em `config.py`.
+### Plataforma embarcada
 
-## Testar apenas a webcam
+O Raspberry Pi 3 Model B atua como unidade central de processamento do sistema. Nele são executados o sistema operacional, a aplicação do Photo Booth e as bibliotecas responsáveis pela interface gráfica e pela captura de imagens. Além de controlar o fluxo da aplicação, o Raspberry Pi realiza o processamento das imagens capturadas e o armazenamento local das fotografias.
 
-```bash
-python3 camera_test.py
-```
+A escolha do Raspberry Pi deve-se ao seu baixo consumo de energia, dimensões reduzidas, disponibilidade de portas USB para conexão de periféricos e capacidade de executar aplicações gráficas em Python de forma satisfatória para esse tipo de sistema embarcado.
 
-No teste:
+### Sistema de captura
 
-- `ESPAÇO` salva uma foto;
-- `ESC` ou `Q` fecha o programa.
+A aquisição das imagens é realizada por uma webcam USB Microsoft LifeCam VX-7000, conectada diretamente ao Raspberry Pi. A comunicação com o dispositivo utiliza a interface Video4Linux2 (V4L2), enquanto a captura e o processamento dos quadros são realizados por meio da biblioteca OpenCV.
 
-## Executar o Photo Booth
+Durante o funcionamento do sistema, a webcam fornece continuamente um fluxo de vídeo (preview), permitindo que o usuário visualize sua posição antes da captura da fotografia. Após a contagem regressiva, um quadro é capturado e armazenado localmente.
 
-```bash
-python3 main.py
-```
+### Interface do usuário
 
-Também é possível usar:
+A interação ocorre inteiramente por meio de uma interface gráfica desenvolvida em Pygame, exibida em um monitor conectado ao Raspberry Pi. A interface apresenta as diferentes telas da aplicação, incluindo a tela inicial, a visualização ao vivo da câmera, a contagem regressiva, a revisão da fotografia e as opções de repetir ou finalizar a sessão.
 
-- `ESPAÇO` na tela inicial para iniciar;
-- `ESPAÇO` no preview para fotografar;
-- `ESC` ou `Q` para fechar.
+Diferentemente da versão original do projeto, não são utilizados botões físicos conectados às portas GPIO; toda a interação é realizada diretamente pela interface gráfica, com auxílio de teclado e mouse para navegação na interface.
 
-## Tela sensível ao toque
+### Armazenamento e Sistema de impressão
 
-Na maioria das instalações do Raspberry Pi OS, o toque é traduzido pelo SDL para clique de mouse. O código também trata diretamente o evento `FINGERDOWN`.
-
-## Ajustes mais importantes
-
-Todos os ajustes ficam em `config.py`.
-
-### Rodar em janela durante os testes
-
-```python
-FULLSCREEN = False
-DISPLAY_SIZE = (1280, 720)
-```
-
-### Esconder o cursor no modo quiosque
-
-```python
-SHOW_MOUSE_CURSOR = False
-```
-
-### Trocar o dispositivo da câmera
-
-```python
-CAMERA_DEVICE = "/dev/video0"
-```
-
-Para evitar que o número mude, confira:
-
-```bash
-ls -l /dev/v4l/by-id/
-```
-
-Depois use o caminho completo retornado, por exemplo:
-
-```python
-CAMERA_DEVICE = "/dev/v4l/by-id/usb-Microsoft_...-video-index0"
-```
-
-### Preview e foto espelhados
-
-```python
-MIRROR_PREVIEW = True
-MIRROR_SAVED_PHOTO = False
-```
-
-### Desempenho no Raspberry Pi 3B
-
-Os valores iniciais foram escolhidos para reduzir carga:
-
-```python
-DISPLAY_SIZE = (1280, 720)
-CAMERA_WIDTH = 640
-CAMERA_HEIGHT = 480
-CAMERA_FPS = 30
-TARGET_FPS = 20
-```
-
-Caso o preview fique pesado:
-
-```python
-TARGET_FPS = 15
-DISPLAY_SIZE = (1024, 576)
-```
-
-## Imagens personalizadas
-
-Coloque na pasta `images/`:
-
-- `attract.jpg`: tela inicial;
-- `printing.jpg`: tela de processamento;
-- `done.jpg`: tela final.
-
-Se os arquivos não existirem, o programa usa telas simples desenhadas em Pygame.
-
-## Quando a impressora chegar
-
-1. Instale e configure o CUPS.
-2. Confirme que este comando imprime:
-
-```bash
-lp photos/alguma_foto.jpg
-```
-
-3. Em `config.py`, altere:
-
-```python
-PRINTER_MODE = "cups"
-```
-
-Para selecionar uma impressora específica:
-
-```python
-PRINTER_NAME = "Nome_da_Impressora"
-```
-
-A lógica de câmera e interface não precisará ser alterada.
-
-## Solução de problemas
-
-### A câmera está ocupada
-
-Feche outros programas que estejam usando `/dev/video0`, como `fswebcam`, VLC ou outro teste OpenCV.
-
-### Permissão negada
-
-Confira os grupos do usuário:
-
-```bash
-groups
-```
-
-Caso `video` não apareça:
-
-```bash
-sudo usermod -aG video "$USER"
-```
-
-Reinicie a sessão ou o Raspberry Pi.
-
-### Preview demora para aparecer
-
-A câmera é aberta durante a inicialização do programa para que o botão responda mais rapidamente. Um pequeno tempo inicial é normal por causa da exposição automática e da negociação do modo MJPG.
-
-### Sair do modo tela cheia
-
-Use `ESC` ou `Q`.
+As fotografias capturadas são armazenadas no sistema de arquivos do Raspberry Pi, permitindo sua recuperação ou utilização posterior. A impressão das imagens é realizada por uma impressora que está conectada diretamente Raspberry Pi, imprimindo as fotos que foram capturadas pela webcam.
