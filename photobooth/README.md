@@ -40,7 +40,7 @@ A motivação da adaptação é permitir que o sistema funcione utilizando hardw
 
 ## Arquitetura Proposta
 
-![Arquitetura do sistema](arquitetura.png)
+![Arquitetura do sistema](Arquitetura.png)
 
 ### Plataforma embarcada
 
